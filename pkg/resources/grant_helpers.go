@@ -71,8 +71,7 @@ func d(in interface{}) {
 }
 
 func readGenericGrant(data *schema.ResourceData, meta interface{}, builder *snowflake.GrantBuilder) error {
-	db := meta.(*sql.DB)
-	grants, err := readGenericGrants(db, builder)
+	grants, err := readGenericGrants(meta, builder)
 	if err != nil {
 		return err
 	}
@@ -128,26 +127,81 @@ func readGenericGrant(data *schema.ResourceData, meta interface{}, builder *snow
 	return nil
 }
 
-func readGenericGrants(db *sql.DB, builder *snowflake.GrantBuilder) ([]*grant, error) {
-	conn := sqlx.NewDb(db, "snowflake")
-
-	stmt := builder.Show()
-	rows, err := conn.Queryx(stmt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+func readGenericGrants(meta interface{}, builder *snowflake.GrantBuilder) ([]*grant, error) {
+	db := meta.(*sql.DB)
 	var grants []*grant
-	for rows.Next() {
-		grant := &grant{}
-		err := rows.StructScan(grant)
+	retry := true
+	for retry {
+		d("Main loop in readGenericGrants()")
+		retry = false
+
+		conn := sqlx.NewDb(db, "snowflake")
+
+		stmt := builder.Show()
+		log.Printf("[DEBUG] stmt %s", stmt)
+
+		var rows *sqlx.Rows
+		var err error
+		c1 := make(chan *sqlx.Rows)
+		go func() {
+			rows, err = conn.Queryx(stmt)
+			c1 <- rows
+			return
+		}()
+		select {
+		case <-c1:
+			d("conn.Queryx() returned within time.")
+		case <-time.After(12 * time.Second):
+			d("12 seconds elasped on conn.Queryx(), timing out.")
+			close(c1)
+			retry = true
+		}
 		if err != nil {
 			return nil, err
 		}
-		grants = append(grants, grant)
+		if retry {
+			d("Attempting db.Ping()...")
+			db.Ping()
+			d("db.Ping() succeeded.")
+			continue
+		}
+		defer rows.Close()
+
+		next := func(rows *sqlx.Rows) bool {
+			c2 := make(chan bool)
+			go func() { c2 <- rows.Next() }()
+			select {
+			case res := <-c2:
+				return res
+			case <-time.After(12 * time.Second):
+				d("12 seconds elasped on rows.Next(), timing out.")
+				close(c2)
+				retry = true
+				d("Attempting db.Ping()...")
+				db.Ping()
+				d("db.Ping() succeeded.")
+				return false
+			}
+		}
+
+		d("About to fetch first row of query result...")
+		grants = nil
+		for next(rows) {
+			d("Begin iteration.")
+			grant := &grant{}
+			err := rows.StructScan(grant)
+			if err != nil {
+				return nil, err
+			}
+			d(fmt.Sprintf("Scanned grant: %+v", grant))
+			grants = append(grants, grant)
+			d("Appended grant, iteration complete.")
+		}
+		//d("Attempting rows.Close().")
+		//rows.Close()
 	}
 
+	d(fmt.Sprintf("Successfully returning from readGenericGrants() with %d scanned grants.", len(grants)))
 	return grants, nil
 }
 

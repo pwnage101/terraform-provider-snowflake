@@ -98,6 +98,7 @@ func CreateSchemaGrant(data *schema.ResourceData, meta interface{}) error {
 
 // ReadSchemaGrant implements schema.ReadFunc
 func ReadSchemaGrant(data *schema.ResourceData, meta interface{}) error {
+	d(fmt.Sprintf("Entering ReadSchemaGrant for \"%s\".", data.Id()))
 	db, schema, _, priv, err := splitGrantID(data.Id())
 	if err != nil {
 		return err
