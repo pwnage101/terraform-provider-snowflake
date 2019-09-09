@@ -131,9 +131,17 @@ func readGenericGrants(meta interface{}, builder *snowflake.GrantBuilder) ([]*gr
 	db := meta.(*sql.DB)
 	var grants []*grant
 	retry := true
+	loop_index := 0
 	for retry {
 		d("Main loop in readGenericGrants()")
+
+		loop_index += 1
+		d(fmt.Sprintf("Loop index: %d", loop_index))
+
 		retry = false
+
+		stats := db.Stats()
+		d(fmt.Sprintf("db.Stats(): %+v", stats))
 
 		conn := sqlx.NewDb(db, "snowflake")
 
@@ -142,24 +150,28 @@ func readGenericGrants(meta interface{}, builder *snowflake.GrantBuilder) ([]*gr
 
 		var rows *sqlx.Rows
 		var err error
-		c1 := make(chan *sqlx.Rows)
-		go func() {
-			rows, err = conn.Queryx(stmt)
-			c1 <- rows
-			return
-		}()
-		select {
-		case <-c1:
-			d("conn.Queryx() returned within time.")
-		case <-time.After(12 * time.Second):
-			d("12 seconds elasped on conn.Queryx(), timing out.")
-			close(c1)
-			retry = true
-		}
+		//c1 := make(chan *sqlx.Rows)
+		//go func() {
+		//	rows, err = conn.Queryx(stmt)
+		//	c1 <- rows
+		//	return
+		//}()
+		//select {
+		//case <-c1:
+		//	d("conn.Queryx() returned within time.")
+		//case <-time.After(12 * time.Second):
+		//	d("12 seconds elasped on conn.Queryx(), timing out.")
+		//	close(c1)
+		//	retry = true
+		//}
+		rows, err = conn.Queryx(stmt)
 		if err != nil {
 			return nil, err
 		}
 		if retry {
+			d("Attempting db.Stats()...")
+			stats := db.Stats()
+			d(fmt.Sprintf("db.Stats(): %+v", stats))
 			d("Attempting db.Ping()...")
 			db.Ping()
 			d("db.Ping() succeeded.")
@@ -167,26 +179,29 @@ func readGenericGrants(meta interface{}, builder *snowflake.GrantBuilder) ([]*gr
 		}
 		defer rows.Close()
 
-		next := func(rows *sqlx.Rows) bool {
-			c2 := make(chan bool)
-			go func() { c2 <- rows.Next() }()
-			select {
-			case res := <-c2:
-				return res
-			case <-time.After(12 * time.Second):
-				d("12 seconds elasped on rows.Next(), timing out.")
-				close(c2)
-				retry = true
-				d("Attempting db.Ping()...")
-				db.Ping()
-				d("db.Ping() succeeded.")
-				return false
-			}
-		}
+		//next := func(rows *sqlx.Rows) bool {
+		//	c2 := make(chan bool)
+		//	go func() { c2 <- rows.Next() }()
+		//	select {
+		//	case res := <-c2:
+		//		return res
+		//	case <-time.After(12 * time.Second):
+		//		d("12 seconds elasped on rows.Next(), timing out.")
+		//		close(c2)
+		//		retry = true
+		//		d("Attempting db.Stats()...")
+		//		stats := db.Stats()
+		//		d(fmt.Sprintf("db.Stats(): %+v", stats))
+		//		d("Attempting db.Ping()...")
+		//		db.Ping()
+		//		d("db.Ping() succeeded.")
+		//		return false
+		//	}
+		//}
 
 		d("About to fetch first row of query result...")
 		grants = nil
-		for next(rows) {
+		for rows.Next() {
 			d("Begin iteration.")
 			grant := &grant{}
 			err := rows.StructScan(grant)
@@ -197,8 +212,8 @@ func readGenericGrants(meta interface{}, builder *snowflake.GrantBuilder) ([]*gr
 			grants = append(grants, grant)
 			d("Appended grant, iteration complete.")
 		}
-		//d("Attempting rows.Close().")
-		//rows.Close()
+		d("Attempting rows.Close().")
+		rows.Close()
 	}
 
 	d(fmt.Sprintf("Successfully returning from readGenericGrants() with %d scanned grants.", len(grants)))

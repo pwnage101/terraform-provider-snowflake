@@ -109,6 +109,10 @@ func CreateSchema(data *schema.ResourceData, meta interface{}) error {
 // ReadSchema implements schema.ReadFunc
 func ReadSchema(data *schema.ResourceData, meta interface{}) error {
 	db := meta.(*sql.DB)
+
+	stats := db.Stats()
+	d(fmt.Sprintf("db.Stats() at the top of ReadSchema(): %+v", stats))
+
 	dbName, schema, err := splitSchemaID(data.Id())
 	if err != nil {
 		return err
@@ -119,6 +123,10 @@ func ReadSchema(data *schema.ResourceData, meta interface{}) error {
 	var createdOn, name, isDefault, isCurrent, databaseName, owner, comment, options sql.NullString
 	var retentionTime sql.NullInt64
 	err = row.Scan(&createdOn, &name, &isDefault, &isCurrent, &databaseName, &owner, &comment, &options, &retentionTime)
+
+	stats = db.Stats()
+	d(fmt.Sprintf("db.Stats() at after row.Scan() in ReadSchema(): %+v", stats))
+
 	if err != nil {
 		return err
 	}
@@ -253,6 +261,10 @@ func DeleteSchema(data *schema.ResourceData, meta interface{}) error {
 // SchemaExists implements schema.ExistsFunc
 func SchemaExists(data *schema.ResourceData, meta interface{}) (bool, error) {
 	db := meta.(*sql.DB)
+
+	stats := db.Stats()
+	d(fmt.Sprintf("db.Stats() at the top of SchemaExists(): %+v", stats))
+
 	dbName, schema, err := splitSchemaID(data.Id())
 	if err != nil {
 		return false, err
@@ -265,8 +277,14 @@ func SchemaExists(data *schema.ResourceData, meta interface{}) (bool, error) {
 	}
 
 	if rows.Next() {
+		rows.Close()
 		return true, nil
 	}
+
+	rows.Close()
+
+	stats = db.Stats()
+	d(fmt.Sprintf("db.Stats() at the bottom of SchemaExists(): %+v", stats))
 
 	return false, nil
 }

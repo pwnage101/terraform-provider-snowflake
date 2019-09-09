@@ -2,6 +2,7 @@ package provider
 
 import (
 	"log"
+	"time"
 
 	"github.com/chanzuckerberg/terraform-provider-snowflake/pkg/db"
 	"github.com/chanzuckerberg/terraform-provider-snowflake/pkg/resources"
@@ -106,6 +107,7 @@ func DSN(s *schema.ResourceData) (string, error) {
 		Region:   region,
 		Password: password,
 		Role:     role,
+		RequestTimeout: 20 * time.Second,
 	})
 
 	if browserAuth {
@@ -115,6 +117,7 @@ func DSN(s *schema.ResourceData) (string, error) {
 			Region:        region,
 			Role:          role,
 			Authenticator: gosnowflake.AuthTypeExternalBrowser,
+			RequestTimeout: 20 * time.Second,
 		})
 	}
 

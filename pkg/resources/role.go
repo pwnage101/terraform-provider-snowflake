@@ -43,6 +43,8 @@ func ReadRole(data *schema.ResourceData, meta interface{}) error {
 	db := meta.(*sql.DB)
 	id := data.Id()
 
+	stats := db.Stats()
+	d(fmt.Sprintf("db.Stats(): %+v", stats))
 	row := db.QueryRow(fmt.Sprintf("SHOW ROLES LIKE '%s'", id))
 	var createdOn, name, isDefault, isCurrent, isInherited, assignedToUsers, grantedToRoles, grantedRoles, owner, comment sql.NullString
 	err := row.Scan(&createdOn, &name, &isDefault, &isCurrent, &isInherited, &assignedToUsers, &grantedToRoles, &grantedRoles, &owner, &comment)

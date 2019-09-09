@@ -153,6 +153,10 @@ func readGrants(db *sql.DB, roleName string) ([]*roleGrant, error) {
 		grants = append(grants, g)
 
 	}
+	// Make sure the query can be processed to completion with no errors.
+	if close_err := rows.Close(); close_err != nil {
+		return nil, close_err
+	}
 
 	for _, g := range grants {
 		if g.GranteeName.Valid {
